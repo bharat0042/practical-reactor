@@ -5,8 +5,6 @@ import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicReference;
@@ -274,8 +272,12 @@ public class c6_CombiningPublishers extends CombiningPublishersBase {
     public void acid_durability() {
         //todo: feel free to change code as you need
         Flux<String> committedTasksIds = null;
-        tasksToExecute();
-        commitTask(null);
+        committedTasksIds = tasksToExecute()
+                .flatMapSequential(item -> item
+                                    .flatMap(taskId -> {
+                                        commitTask(taskId);
+                                        return Mono.just(taskId);
+                                    } ));
 
         //don't change below this line
         StepVerifier.create(committedTasksIds)
@@ -294,8 +296,8 @@ public class c6_CombiningPublishers extends CombiningPublishersBase {
     public void major_merger() {
         //todo: feel free to change code as you need
         Flux<String> microsoftBlizzardCorp =
-                microsoftTitles();
-        blizzardTitles();
+                microsoftTitles()
+                        .mergeWith(blizzardTitles());
 
         //don't change below this line
         StepVerifier.create(microsoftBlizzardCorp)
@@ -322,6 +324,9 @@ public class c6_CombiningPublishers extends CombiningPublishersBase {
         Flux<Car> producedCars = null;
         carChassisProducer();
         carEngineProducer();
+        producedCars = Flux.zip(carChassisProducer(), carEngineProducer(), (chasis, engine) -> {
+            return new Car(chasis, engine);
+        });
 
         //don't change below this line
         StepVerifier.create(producedCars)
@@ -342,9 +347,11 @@ public class c6_CombiningPublishers extends CombiningPublishersBase {
 
     //todo: implement this method based on instructions
     public Mono<String> chooseSource() {
-        sourceA(); //<- choose if sourceRef == "A"
-        sourceB(); //<- choose if sourceRef == "B"
-        return Mono.empty(); //otherwise, return empty
+       return Mono.defer(() -> {
+           if(sourceRef.get().equals("A")) return sourceA();
+           else if(sourceRef.get().equals("B")) return sourceB();
+           else return Mono.just("X");
+       });
     }
 
     @Test
@@ -377,7 +384,11 @@ public class c6_CombiningPublishers extends CombiningPublishersBase {
         //todo: feel free to change code as you need
         Flux<String> stream = StreamingConnection.startStreaming()
                                                  .flatMapMany(Function.identity());
-        StreamingConnection.closeConnection();
+        stream = Flux.usingWhen(
+                StreamingConnection.startStreaming(),  //resourceSupplier
+                resourceClosure -> resourceClosure,
+                asyncCleanup -> StreamingConnection.closeConnection()
+        );
 
         //don't change below this line
         StepVerifier.create(stream)
